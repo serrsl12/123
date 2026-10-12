@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>俄罗斯方块 · 进制挑战</title>
+<style>
+  :root {
+    --bg: #0B1120;
+    --panel-bg: rgba(30, 41, 59, 0.7);
+    --panel-border: rgba(56, 189, 248, 0.2);
+    --text-main: #F8FAFC;
+    --text-sub: #94A3B8;
+    --accent: #38BDF8;
+    --success: #22C55E;
+    --danger: #EF4444;
+    --barrier: #475569;
+  }
+  * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; min-height: 100vh; background: radial-gradient(circle at 50% 0%, #1E293B 0%, var(--bg) 70%);
+    color: var(--text-main);
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    padding: 12px;
+  }
+  .game-container { display: flex; gap: 14px; align-items: flex-start; }
+
+  /* --- 游戏主画面 --- */
+  .board-wrap {
+    position: relative;
+    background: #0F172A;
+    border: 2px solid #1E293B;
+    border-radius: 12px;
+    box-shadow: 0 0 30px rgba(56, 189, 248, 0.15), inset 0 0 20px rgba(0,0,0,0.5);
+    overflow: hidden;
+    line-height: 0;
+  }
+  canvas#board { display: block; }
+
+  /* --- 右侧面板 --- */
+  .side-panel { width: 200px; display: flex; flex-direction: column; gap: 10px; }
+  
+  .panel {
+    background: var(--panel-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+  .panel-title {
+    font-size: 10px; font-weight: 700; color: var(--text-sub);
+    letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .panel-title span { color: var(--accent); font-size: 11px; letter-spacing: 0; }
+  
+  #next { display: block; margin: 0 auto; background: rgba(15, 23, 42, 0.6); border-radius: 8px; }
+  
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .stat-box { background: rgba(15, 23, 42, 0.5); border-radius: 8px; padding: 8px 4px; text-align: center; border: 1px solid rgba(255,255,255,0.05); }
+  .stat-box .label { font-size: 9px; color: var(--text-sub); letter-spacing: 1px; margin-bottom: 2px; }
+  .stat-box .value { font-size: 16px; font-weight: 800; color: var(--accent); }
+
+  /* --- 答题区 --- */
+  .quiz-panel { flex: 1; display: flex; flex-direction: column; }
+  .quiz-header { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-sub); margin-bottom: 8px; }
+  .quiz-header b { color: #FBBF24; font-size: 13px; }
+  
+  #quizQuestion {
+    font-size: 12px; line-height: 1.5; color: #CBD5E1; 
+    min-height: 44px; margin-bottom: 8px; word-break: break-word;
+  }
+  #quizQuestion em {
+    font-style: normal; color: #FACC15; background: rgba(250,204,21,0.1);
+    padding: 1px 4px; border-radius: 4px; font-family: monospace, Consolas;
+  }
+  
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .opt {
+    padding: 10px 4px; font-size: 13px; font-weight: 700;
+    font-family: monospace, Consolas; color: #E2E8F0;
+    background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px; cursor: pointer; transition: all 0.15s ease;
+    word-break: break-all;
+  }
+  .opt:active:not(:disabled) { transform: scale(0.96); }
+  .opt:hover:not(:disabled) { background: rgba(51, 65, 85, 0.9); border-color: var(--accent); }
+  .opt:disabled { opacity: 0.6; }
+  .opt.right { background: rgba(34, 197, 94, 0.2); border-color: var(--success); color: #4ADE80; opacity: 1; }
+  .opt.wrong { background: rgba(239, 68, 68, 0.2); border-color: var(--danger); color: #F87171; opacity: 1; }
+
+  #quizFeedback {
+    margin-top: 8px; min-height: 18px; font-size: 11px;
+    font-weight: 600; text-align: center; transition: all 0.3s;
+  }
+  #quizFeedback.ok { color: #4ADE80; }
+  #quizFeedback.bad { color: #F87171; }
+
+  .tips { font-size: 10px; line-height: 1.6; color: var(--text-sub); text-align: center; padding: 6px; }
+  .tips b { color: #CBD5E1; }
+
+  /* 适配极小屏幕 */
+  @media (max-width: 560px) {
+    .game-container { flex-direction: column; align-items: center; }
+    .side-panel { width: 100%; max-width: 340px; }
+    .board-wrap { width: 100%; max-width: 340px; }
+    canvas#board { width: 100%; height: auto; }
+  }
+</style>
+</head>
+<body>
+
+<div class="game-container">
+  <!-- 游戏主画面 -->
+  <div class="board-wrap">
+    <canvas id="board" width="300" height="600"></canvas>
+  </div>
+
+  <!-- 右侧信息面板 -->
+  <div class="side-panel">
+    <!-- 下一块 -->
+    <div class="panel">
+      <div class="panel-title">NEXT</div>
+      <canvas id="next" width="90" height="60"></canvas>
+    </div>
+
+    <!-- 核心数据 -->
+    <div class="panel stats-grid">
+      <div class="stat-box"><div class="label">SCORE</div><div class="value" id="score">0</div></div>
+      <div class="stat-box"><div class="label">LEVEL</div><div class="value" id="level">1</div></div>
+      <div class="stat-box"><div class="label">LINES</div><div class="value" id="lines">0</div></div>
+    </div>
+
+    <!-- 进制答题区 -->
+    <div class="panel quiz-panel">
+      <div class="panel-title" style="margin-bottom: 6px;">
+        进制挑战 <span id="quizStat">✔0 ✘0</span>
+      </div>
+      <div class="quiz-header">
+        <span>剩余障碍行</span><b id="quizRows">2</b>
+      </div>
+      <div id="quizQuestion">加载中...</div>
+      <div class="opts" id="quizOptions"></div>
+      <div id="quizFeedback"></div>
+    </div>
+
+    <!-- 操作提示 -->
+    <div class="panel tips">
+      <b>← →</b> 移动　<b>↑/X</b> 旋转　<b>Z</b> 逆旋<br>
+      <b>↓</b> 软降　<b>空格</b> 硬降<br>
+      <b>P</b> 暂停　<b>R</b> 重开
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   一、基础设置
+   ========================================================= */
+const COLS = 10, ROWS = 20, SIZE = 30;
+const QUIZ_ROW = 8; // 障碍行标记
+
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+const nextCv = document.getElementById('next');
+const nctx = nextCv.getContext('2d');
+
+const SHAPES = {
+  I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+  J: [[2,0,0],[2,2,2],[0,0,0]],
+  L: [[0,0,3],[3,3,3],[0,0,0]],
+  O: [[4,4],[4,4]],
+  S: [[0,5,5],[5,5,0],[0,0,0]],
+  T: [[0,6,0],[6,6,6],[0,0,0]],
+  Z: [[7,7,0],[0,7,7],[0,0,0]]
+};
+const COLORS = [null, '#22D3EE', '#3B82F6', '#F59E0B', '#FACC15',
+                '#22C55E', '#A855F7', '#EF4444', '#475569'];
+const POINTS = [0, 100, 300, 500, 800];
+
+/* =========================================================
+   二、游戏状态
+   ========================================================= */
+let board, piece, nextTypeName, bag = [];
+let score, lines, level;
+let correctCount, wrongCount;
+let dropInterval, dropCounter = 0, lastTime = 0;
+let paused = false, gameOver = false;
+
+let quizCurrent = null;
+let answering = false;
+
+/* =========================================================
+   三、工具函数
+   ========================================================= */
+const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/* =========================================================
+   四、棋盘与障碍行
+   ========================================================= */
+function newBoard() {
+  const b = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+  // 底部两行障碍
+  for (let x = 0; x < COLS; x++) {
+    b[ROWS - 1][x] = QUIZ_ROW;
+    b[ROWS - 2][x] = QUIZ_ROW;
+  }
+  return b;
+}
+
+function countQuizRows() {
+  return board.filter(row => row.every(v => v === QUIZ_ROW)).length;
+}
+
+function removeQuizRow() {
+  for (let y = ROWS - 1; y >= 0; y--) {
+    if (board[y].every(v => v === QUIZ_ROW)) {
+      board.splice(y, 1);
+      board.unshift(Array(COLS).fill(0));
+      return true;
+    }
+  }
+  return false;
+}
+
+/* =========================================================
+   五、俄罗斯方块核心逻辑（原版）
+   ========================================================= */
+function randomType() {
+  if (bag.length === 0) bag = shuffle(['I','J','L','O','S','T','Z']);
+  return bag.pop();
+}
+
+function spawn() {
+  const type = nextTypeName;
+  nextTypeName = randomType();
+  const mat = SHAPES[type].map(r => r.slice());
+  piece = { type, matrix: mat, x: Math.floor((COLS - mat[0].length) / 2), y: 0 };
+  if (collide(piece.matrix, piece.x, piece.y)) { gameOver = true; piece = null; }
+  drawNext();
+}
+
+function collide(mat, px, py) {
+  for (let r = 0; r < mat.length; r++) {
+    for (let c = 0; c < mat[r].length; c++) {
+      if (!mat[r][c]) continue;
+      const nx = px + c, ny = py + r;
+      if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
+      if (ny >= 0 && board[ny][nx]) return true;
+    }
+  }
+  return false;
+}
+
+function rotateMat(mat, dir) {
+  const N = mat.length;
+  const res = Array.from({ length: N }, () => Array(N).fill(0));
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      if (dir > 0) res[c][N - 1 - r] = mat[r][c];
+      else res[N - 1 - c][r] = mat[r][c];
+    }
+  }
+  return res;
+}
+
+function move(dx) { if (piece && !collide(piece.matrix, piece.x + dx, piece.y)) piece.x += dx; }
+
+function rotatePiece(dir) {
+  if (!piece) return;
+  const rotated = rotateMat(piece.matrix, dir);
+  for (const kick of [0, -1, 1, -2, 2]) {
+    if (!collide(rotated, piece.x + kick, piece.y)) { piece.matrix = rotated; piece.x += kick; return; }
+  }
+}
+
+function softDrop() {
+  if (!piece) return;
+  if (!collide(piece.matrix, piece.x, piece.y + 1)) piece.y++;
+  else lock();
+}
+
+function hardDrop() {
+  if (!piece) return;
+  while (!collide(piece.matrix, piece.x, piece.y + 1)) { piece.y++; score += 1; }
+  lock();
+}
+
+function merge() {
+  for (let r = 0; r < piece.matrix.length; r++) {
+    for (let c = 0; c < piece.matrix[r].length; c++) {
+      if (!piece.matrix[r][c]) continue;
+      const ny = piece.y + r, nx = piece.x + c;
+      if (ny >= 0 && ny < ROWS && nx >= 0 && nx < COLS) board[ny][nx] = piece.matrix[r][c];
+    }
+  }
+}
+
+function clearLines() {
+  let cleared = 0;
+  for (let y = ROWS - 1; y >= 0; y--) {
+    if (board[y].includes(QUIZ_ROW)) continue; // 障碍行不参与普通消行
+    if (board[y].every(v => v !== 0)) {
+      board.splice(y, 1);
+      board.unshift(Array(COLS).fill(0));
+      cleared++; y++;
+    }
+  }
+  return cleared;
+}
+
+function lock() {
+  merge(); piece = null;
+  const cleared = clearLines();
+  if (cleared > 0) {
+    lines += cleared;
+    score += POINTS[cleared] * level;
+    const newLevel = Math.floor(lines / 10) + 1;
+    if (newLevel !== level) { level = newLevel; dropInterval = Math.max(100, 1000 - (level - 1) * 80); }
+  }
+  updateHUD();
+  spawn();
+}
+
+/* =========================================================
+   六、渲染（美化版）
+   ========================================================= */
+function drawCell(context, cx, cy, v, size) {
+  const x = cx * size, y = cy * size;
+  if (v === QUIZ_ROW) {
+    context.fillStyle = '#475569';
+    context.fillRect(x, y, size, size);
+    context.strokeStyle = '#64748B'; context.lineWidth = 2;
+    context.beginPath(); context.moveTo(x + 5, y + size - 5); context.lineTo(x + size - 5, y + 5); context.stroke();
+    context.strokeStyle = 'rgba(0,0,0,0.4)'; context.strokeRect(x + 1, y + 1, size - 2, size - 2);
+    return;
+  }
+  // 方块立体感与渐变
+  const grad = context.createLinearGradient(x, y, x + size, y + size);
+  grad.addColorStop(0, COLORS[v]);
+  grad.addColorStop(1, COLORS[v] + 'AA'); // 透明化尾部
+  context.fillStyle = grad;
+  context.fillRect(x, y, size, size);
+  // 高光
+  context.fillStyle = 'rgba(255,255,255,0.25)';
+  context.fillRect(x + 2, y + 2, size - 4, 4);
+  context.fillRect(x + 2, y + 2, 4, size - 4);
+  // 边框
+  context.strokeStyle = 'rgba(0,0,0,0.6)'; context.lineWidth = 2;
+  context.strokeRect(x + 1, y + 1, size - 2, size - 2);
+}
+
+function draw() {
+  ctx.fillStyle = '#0F172A';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 网格
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.05)'; ctx.lineWidth = 1;
+  for (let x = 1; x < COLS; x++) { ctx.beginPath(); ctx.moveTo(x * SIZE + .5, 0); ctx.lineTo(x * SIZE + .5, canvas.height); ctx.stroke(); }
+  for (let y = 1; y < ROWS; y++) { ctx.beginPath(); ctx.moveTo(0, y * SIZE + .5); ctx.lineTo(canvas.width, y * SIZE + .5); ctx.stroke(); }
+
+  // 已堆积方块
+  for (let y = 0; y < ROWS; y++)
+    for (let x = 0; x < COLS; x++)
+      if (board[y][x]) drawCell(ctx, x, y, board[y][x], SIZE);
+
+  // 当前方块与幽灵落点
+  if (piece && !gameOver) {
+    let gy = piece.y;
+    while (!collide(piece.matrix, piece.x, gy + 1)) gy++;
+    ctx.globalAlpha = 0.15;
+    for (let r = 0; r < piece.matrix.length; r++)
+      for (let c = 0; c < piece.matrix[r].length; c++)
+        if (piece.matrix[r][c]) drawCell(ctx, piece.x + c, gy + r, piece.matrix[r][c], SIZE);
+    ctx.globalAlpha = 1;
+
+    for (let r = 0; r < piece.matrix.length; r++)
+      for (let c = 0; c < piece.matrix[r].length; c++)
+        if (piece.matrix[r][c]) drawCell(ctx, piece.x + c, piece.y + r, piece.matrix[r][c], SIZE);
+  }
+
+  if (paused && !gameOver) overlay('PAUSED', '按 P 继续', '#38BDF8');
+  if (gameOver) overlay('GAME OVER', '按 R 重新开始', '#EF4444');
+}
+
+function overlay(title, sub, color) {
+  ctx.fillStyle = 'rgba(11, 17, 32, 0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color; ctx.font = 'bold 28px system-ui, sans-serif';
+  ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 8);
+  ctx.fillStyle = '#94A3B8'; ctx.font = '14px system-ui, sans-serif';
+  ctx.fillText(sub, canvas.width / 2, canvas.height / 2 + 24);
+}
+
+function drawNext() {
+  nctx.clearRect(0, 0, nextCv.width, nextCv.height);
+  if (!nextTypeName) return;
+  const mat = SHAPES[nextTypeName];
+  let minR = 99, maxR = -1, minC = 99, maxC = -1;
+  for (let r = 0; r < mat.length; r++)
+    for (let c = 0; c < mat[r].length; c++)
+      if (mat[r][c]) { minR = Math.min(minR, r); maxR = Math.max(maxR, r); minC = Math.min(minC, c); maxC = Math.max(maxC, c); }
+  const size = 14;
+  const w = (maxC - minC + 1) * size, h = (maxR - minR + 1) * size;
+  const ox = (nextCv.width - w) / 2, oy = (nextCv.height - h) / 2;
+  for (let r = minR; r <= maxR; r++)
+    for (let c = minC; c <= maxC; c++)
+      if (mat[r][c]) {
+        const v = mat[r][c];
+        const x = ox + (c - minC) * size, y = oy + (r - minR) * size;
+        const grad = nctx.createLinearGradient(x, y, x + size, y + size);
+        grad.addColorStop(0, COLORS[v]); grad.addColorStop(1, COLORS[v] + 'AA');
+        nctx.fillStyle = grad; nctx.fillRect(x, y, size, size);
+        nctx.strokeStyle = 'rgba(0,0,0,0.5)'; nctx.lineWidth = 1; nctx.strokeRect(x + 1, y + 1, size - 2, size - 2);
+      }
+}
+
+function updateHUD() {
+  document.getElementById('score').textContent = score;
+  document.getElementById('level').textContent = level;
+  document.getElementById('lines').textContent = lines;
+  document.getElementById('quizStat').textContent = `✔${correctCount} ✘${wrongCount}`;
+  document.getElementById('quizRows').textContent = countQuizRows();
+}
+
+/* =========================================================
+   七、进制题库（美化版）
+   ========================================================= */
+function makeOptions(correct, kind) {
+  const ans = String(correct);
+  const set = new Set([ans]);
+  let guard = 0;
+  while (set.size < 4 && guard++ < 400) {
+    let cand = null;
+    if (kind === 'bin') {
+      const bits = ans.split(''); const i = randInt(0, bits.length - 1);
+      bits[i] = bits[i] === '0' ? '1' : '0'; cand = bits.join('');
+      if (cand.length > 1 && cand[0] === '0') continue;
+    } else if (kind === 'hex') {
+      const n = parseInt(ans, 16) + randInt(1, 8) * (Math.random() < .5 ? -1 : 1);
+      if (n < 0) continue; cand = n.toString(16).toUpperCase();
+    } else {
+      const n = parseInt(ans, 10) + randInt(1, 9) * (Math.random() < .5 ? -1 : 1);
+      if (n < 0) continue; cand = String(n);
+    }
+    if (cand !== ans) set.add(cand);
+  }
+  let extra = 1;
+  while (set.size < 4) {
+    let cand;
+    if (kind === 'bin') cand = (parseInt(ans, 2) + extra).toString(2);
+    else if (kind === 'hex') cand = (parseInt(ans, 16) + extra).toString(16).toUpperCase();
+    else cand = String(parseInt(ans, 10) + extra);
+    if (cand !== ans) set.add(cand); extra++;
+  }
+  return shuffle([...set]);
+}
+
+function makeQuestion() {
+  const types = ['dec2bin', 'bin2dec', 'dec2hex', 'hex2dec', 'bin2hex', 'hex2bin'];
+  const type = types[randInt(0, types.length - 1)];
+  let q, a, kind;
+  if (type === 'dec2bin') { const n = randInt(1, 255); q = `十进制 <em>${n}</em> 转二进制？`; a = n.toString(2); kind = 'bin'; }
+  else if (type === 'bin2dec') { const n = randInt(1, 255); q = `二进制 <em>${n.toString(2)}</em> 转十进制？`; a = String(n); kind = 'dec'; }
+  else if (type === 'dec2hex') { const n = randInt(1, 4095); q = `十进制 <em>${n}</em> 转十六进制？<br><span style="font-size:10px;color:#94A3B8">（大写，不含 0x）</span>`; a = n.toString(16).toUpperCase(); kind = 'hex'; }
+  else if (type === 'hex2dec') { const n = randInt(1, 4095); q = `十六进制 <em>${n.toString(16).toUpperCase()}</em> 转十进制？`; a = String(n); kind = 'dec'; }
+  else if (type === 'bin2hex') { const n = randInt(1, 255); q = `二进制 <em>${n.toString(2)}</em> 转十六进制？<br><span style="font-size:10px;color:#94A3B8">（大写，不含 0x）</span>`; a = n.toString(16).toUpperCase(); kind = 'hex'; }
+  else { const n = randInt(1, 255); q = `十六进制 <em>${n.toString(16).toUpperCase()}</em> 转二进制？`; a = n.toString(2); kind = 'bin'; }
+  return { q, a, opts: makeOptions(a, kind) };
+}
+
+/* =========================================================
+   八、答题交互逻辑
+   ========================================================= */
+const quizQEl = document.getElementById('quizQuestion');
+const quizOptsEl = document.getElementById('quizOptions');
+const quizFbEl = document.getElementById('quizFeedback');
+
+function newQuiz() {
+  quizCurrent = makeQuestion();
+  renderQuiz();
+}
+
+function renderQuiz() {
+  quizQEl.innerHTML = quizCurrent.q;
+  quizOptsEl.innerHTML = '';
+  quizFbEl.textContent = '';
+  quizFbEl.className = '';
+  quizCurrent.opts.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'opt';
+    btn.textContent = opt;
+    btn.addEventListener('mousedown', e => e.preventDefault());
+    btn.addEventListener('click', () => handleAnswer(opt, btn));
+    quizOptsEl.appendChild(btn);
+  });
+}
+
+function handleAnswer(choice, btn) {
+  if (answering || !quizCurrent) return;
+  answering = true;
+  const isRight = choice === quizCurrent.a;
+  quizOptsEl.querySelectorAll('.opt').forEach(b => {
+    b.disabled = true;
+    if (b.textContent === quizCurrent.a) b.classList.add('right');
+  });
+  if (!isRight) btn.classList.add('wrong');
+
+  if (isRight) {
+    correctCount++;
+    const removed = removeQuizRow();
+    const gain = 100 * level;
+    score += gain;
+    quizFbEl.textContent = removed ? `✔ 正确！消除 1 行障碍 +${gain}` : `✔ 正确！+${gain} 分`;
+    quizFbEl.className = 'ok';
+    updateHUD();
+  } else {
+    wrongCount++;
+    quizFbEl.textContent = `✘ 答错，正确答案：${quizCurrent.a}`;
+    quizFbEl.className = 'bad';
+    updateHUD();
+  }
+
+  setTimeout(() => {
+    answering = false;
+    newQuiz();
+  }, isRight ? 750 : 1150);
+}
+
+/* =========================================================
+   九、主循环与输入控制
+   ========================================================= */
+function loop(time) {
+  const dt = time - lastTime;
+  lastTime = time;
+  if (!paused && !gameOver && piece) {
+    dropCounter += dt;
+    if (dropCounter > dropInterval) { dropCounter = 0; softDrop(); }
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+document.addEventListener('keydown', e => {
+  const k = e.key;
+  if (k === 'r' || k === 'R') { restart(); return; }
+  if (k === 'p' || k === 'P') { if (!gameOver) { paused = !paused; lastTime = performance.now(); } return; }
+  if (gameOver || paused) return;
+  switch (k) {
+    case 'ArrowLeft': e.preventDefault(); move(-1); break;
+    case 'ArrowRight': e.preventDefault(); move(1); break;
+    case 'ArrowDown': e.preventDefault(); softDrop(); dropCounter = 0; break;
+    case 'ArrowUp': case 'x': case 'X': e.preventDefault(); rotatePiece(1); break;
+    case 'z': case 'Z': e.preventDefault(); rotatePiece(-1); break;
+    case ' ': e.preventDefault(); hardDrop(); break;
+  }
+});
+
+/* =========================================================
+   十、开始与重开
+   ========================================================= */
+function restart() {
+  board = newBoard();
+  bag = [];
+  nextTypeName = randomType();
+  score = 0; lines = 0; level = 1;
+  correctCount = 0; wrongCount = 0;
+  dropInterval = 1000; dropCounter = 0;
+  paused = false; gameOver = false; answering = false;
+  spawn();
+  updateHUD();
+  newQuiz();
+  lastTime = performance.now();
+}
+
+restart();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
